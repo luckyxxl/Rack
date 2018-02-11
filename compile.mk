@@ -32,6 +32,10 @@ ifeq ($(ARCH), win)
 	FLAGS += -D_USE_MATH_DEFINES
 endif
 
+ifdef USE_SDL2
+	FLAGS += -DUSE_SDL2
+endif
+
 CFLAGS += $(FLAGS)
 CXXFLAGS += $(FLAGS)
 

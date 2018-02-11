@@ -20,8 +20,15 @@ ifeq ($(ARCH), lin)
 	LDFLAGS += -rdynamic \
 		-lpthread -lGL -ldl \
 		$(shell pkg-config --libs gtk+-2.0) \
-		-Ldep/lib -lGLEW -lglfw -ljansson -lspeexdsp -lcurl -lzip -lrtaudio -lrtmidi -lcrypto -lssl
+		-Ldep/lib -lGLEW -ljansson -lspeexdsp -lcurl -lzip -lrtaudio -lrtmidi -lcrypto -lssl
 	TARGET = Rack
+
+	ifdef USE_SDL2
+		CXXFLAGS += $(shell pkg-config --cflags sdl2)
+		LDFLAGS += $(shell pkg-config --libs sdl2)
+	else
+		LDFLAGS += -lglfw
+	endif
 endif
 
 ifeq ($(ARCH), mac)
@@ -29,9 +36,15 @@ ifeq ($(ARCH), mac)
 	CXXFLAGS += -DAPPLE -stdlib=libc++
 	LDFLAGS += -stdlib=libc++ -lpthread -ldl \
 		-framework Cocoa -framework OpenGL -framework IOKit -framework CoreVideo \
-		-Ldep/lib -lGLEW -lglfw -ljansson -lspeexdsp -lcurl -lzip -lrtaudio -lrtmidi -lcrypto -lssl
+		-Ldep/lib -lGLEW -ljansson -lspeexdsp -lcurl -lzip -lrtaudio -lrtmidi -lcrypto -lssl
 	TARGET = Rack
 	BUNDLE = dist/$(TARGET).app
+
+	ifdef USE_SDL2
+$(error Building with USE_SDL2 is not (yet) supported on mac)
+	else
+		LDFLAGS += -lglfw
+	endif
 endif
 
 ifeq ($(ARCH), win)
@@ -39,10 +52,16 @@ ifeq ($(ARCH), win)
 	LDFLAGS += -static-libgcc -static-libstdc++ -lpthread \
 		-Wl,--export-all-symbols,--out-implib,libRack.a -mwindows \
 		-lgdi32 -lopengl32 -lcomdlg32 -lole32 \
-		-Ldep/lib -lglew32 -lglfw3dll -lcurl -lzip -lrtaudio -lrtmidi -lcrypto -lssl \
+		-Ldep/lib -lglew32 -lcurl -lzip -lrtaudio -lrtmidi -lcrypto -lssl \
 		-Wl,-Bstatic -ljansson -lspeexdsp
 	TARGET = Rack.exe
 	OBJECTS = Rack.res
+
+	ifdef USE_SDL2
+$(error Building with USE_SDL2 is not (yet) supported on win)
+	else
+		LDFLAGS += -lglfw3dll
+	endif
 endif
 
 

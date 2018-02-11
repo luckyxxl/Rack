@@ -31,7 +31,12 @@
 namespace rack {
 
 
+#ifdef USE_SDL2
+SDL_Window *gWindow = NULL;
+SDL_GLContext gGLContext = NULL;
+#else
 GLFWwindow *gWindow = NULL;
+#endif
 NVGcontext *gVg = NULL;
 NVGcontext *gFramebufferVg = NULL;
 std::shared_ptr<Font> gGuiFont;
@@ -43,6 +48,437 @@ Vec gMousePos;
 
 std::string lastWindowTitle;
 
+
+void renderGui() {
+	int width, height;
+#ifdef USE_SDL2
+	SDL_GL_GetDrawableSize(gWindow, &width, &height);
+#else
+	glfwGetFramebufferSize(gWindow, &width, &height);
+#endif
+
+	// Update and render
+	nvgBeginFrame(gVg, width, height, gPixelRatio);
+
+	nvgReset(gVg);
+	nvgScale(gVg, gPixelRatio, gPixelRatio);
+	gScene->draw(gVg);
+
+	glViewport(0, 0, width, height);
+	glClearColor(0.0, 0.0, 0.0, 1.0);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+	nvgEndFrame(gVg);
+#ifdef USE_SDL2
+	SDL_GL_SwapWindow(gWindow);
+#else
+	glfwSwapBuffers(gWindow);
+#endif
+}
+
+
+#ifdef USE_SDL2
+
+void windowInit() {
+	int err;
+
+#if defined NANOVG_GL2
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+#elif defined NANOVG_GL3
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+#elif defined NANOVG_GLES2
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+#endif
+
+	lastWindowTitle = "";
+	gWindow = SDL_CreateWindow(lastWindowTitle.c_str(), SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 640, 480, SDL_WINDOW_OPENGL|SDL_WINDOW_RESIZABLE|SDL_WINDOW_MAXIMIZED);
+	if (!gWindow) {
+		osdialog_message(OSDIALOG_ERROR, OSDIALOG_OK, "Cannot open window with OpenGL 2.0 renderer. Does your graphics card support OpenGL 2.0 or greater? If so, make sure you have the latest graphics drivers installed.");
+		exit(1);
+	}
+
+	gGLContext = SDL_GL_CreateContext(gWindow);
+	if (!gGLContext) {
+		osdialog_message(OSDIALOG_ERROR, OSDIALOG_OK, "Cannot create OpenGL 2.0 context. Does your graphics card support OpenGL 2.0 or greater? If so, make sure you have the latest graphics drivers installed.");
+		exit(1);
+	}
+
+	SDL_GL_MakeCurrent(gWindow, gGLContext);
+
+	SDL_GL_SetSwapInterval(1);
+
+	glewExperimental = GL_TRUE;
+	err = glewInit();
+	if (err != GLEW_OK) {
+		osdialog_message(OSDIALOG_ERROR, OSDIALOG_OK, "Could not initialize GLEW. Does your graphics card support OpenGL 2.0 or greater? If so, make sure you have the latest graphics drivers installed.");
+		exit(1);
+	}
+
+	// GLEW generates GL error because it calls glGetString(GL_EXTENSIONS), we'll consume it here.
+	glGetError();
+
+	SDL_SetWindowMinimumSize(gWindow, 640, 480);
+
+	// Set up NanoVG
+#if defined NANOVG_GL2
+	gVg = nvgCreateGL2(NVG_ANTIALIAS);
+#elif defined NANOVG_GL3
+	gVg = nvgCreateGL3(NVG_ANTIALIAS);
+#elif defined NANOVG_GLES2
+	gVg = nvgCreateGLES2(NVG_ANTIALIAS);
+#endif
+	assert(gVg);
+
+#if defined NANOVG_GL2
+	gFramebufferVg = nvgCreateGL2(NVG_ANTIALIAS);
+#elif defined NANOVG_GL3
+	gFramebufferVg = nvgCreateGL3(NVG_ANTIALIAS);
+#elif defined NANOVG_GLES2
+	gFramebufferVg = nvgCreateGLES2(NVG_ANTIALIAS);
+#endif
+	assert(gFramebufferVg);
+
+	// Set up Blendish
+	gGuiFont = Font::load(assetGlobal("res/DejaVuSans.ttf"));
+	bndSetFont(gGuiFont->handle);
+	// bndSetIconImage(loadImage(assetGlobal("res/icons.png")));
+
+	// Blendish style
+	BNDtheme theme;
+	theme = *bndGetTheme();
+	theme.nodeTheme.nodeBackdropColor = theme.menuTheme.innerColor;
+	theme.nodeTheme.nodeBackdropColor.a = 1.0;
+	bndSetTheme(theme);
+}
+
+void windowDestroy() {
+	gGuiFont.reset();
+
+#if defined NANOVG_GL2
+	nvgDeleteGL2(gVg);
+#elif defined NANOVG_GL3
+	nvgDeleteGL3(gVg);
+#elif defined NANOVG_GLES2
+	nvgDeleteGLES2(gVg);
+#endif
+
+#if defined NANOVG_GL2
+	nvgDeleteGL2(gFramebufferVg);
+#elif defined NANOVG_GL3
+	nvgDeleteGL3(gFramebufferVg);
+#elif defined NANOVG_GLES2
+	nvgDeleteGLES2(gFramebufferVg);
+#endif
+
+	SDL_GL_DeleteContext(gGLContext);
+	SDL_DestroyWindow(gWindow);
+}
+
+static int buttonIndex(Uint8 button) {
+	// http://www.glfw.org/docs/latest/group__buttons.html
+	switch(button) {
+		case SDL_BUTTON_LEFT: return 0;
+		case SDL_BUTTON_RIGHT: return 1;
+		case SDL_BUTTON_MIDDLE: return 2;
+		default: return button;
+	}
+}
+
+void windowRun() {
+	assert(gWindow);
+	gGuiFrame = 0;
+	bool quit = false;
+	while(!quit) {
+		double startTime = SDL_GetTicks() / 1000.;
+		gGuiFrame++;
+
+		// Poll events
+		SDL_Event event;
+		while(SDL_PollEvent(&event)) {
+			switch(event.type) {
+				case SDL_QUIT: {
+					quit = true;
+				}
+				break;
+				case SDL_MOUSEBUTTONDOWN: {
+					Widget *w = NULL;
+					// onMouseDown
+					{
+						EventMouseDown e;
+						e.pos = gMousePos;
+						e.button = buttonIndex(event.button.button);
+						gScene->onMouseDown(e);
+						w = e.target;
+					}
+
+					if (event.button.button == SDL_BUTTON_LEFT) {
+						if (w) {
+							// onDragStart
+							EventDragStart e;
+							w->onDragStart(e);
+						}
+						gDraggedWidget = w;
+
+						if (w != gFocusedWidget) {
+							if (gFocusedWidget) {
+								// onDefocus
+								EventDefocus e;
+								w->onDefocus(e);
+							}
+							gFocusedWidget = NULL;
+							if (w) {
+								// onFocus
+								EventFocus e;
+								w->onFocus(e);
+								if (e.consumed) {
+									gFocusedWidget = w;
+								}
+							}
+						}
+					}
+				}
+				break;
+				case SDL_MOUSEBUTTONUP: {
+					// onMouseUp
+					Widget *w = NULL;
+					{
+						EventMouseUp e;
+						e.pos = gMousePos;
+						e.button = buttonIndex(event.button.button);
+						gScene->onMouseUp(e);
+						w = e.target;
+					}
+
+					if (event.button.button == SDL_BUTTON_LEFT) {
+						if (gDraggedWidget) {
+							// onDragDrop
+							EventDragDrop e;
+							e.origin = gDraggedWidget;
+							w->onDragDrop(e);
+						}
+						// gDraggedWidget might have been set to null in the last event, recheck here
+						if (gDraggedWidget) {
+							// onDragEnd
+							EventDragEnd e;
+							gDraggedWidget->onDragEnd(e);
+						}
+						gDraggedWidget = NULL;
+						gDragHoveredWidget = NULL;
+					}
+				}
+				break;
+				case SDL_MOUSEMOTION: {
+					Vec mousePos = Vec(event.motion.x, event.motion.y).div(gPixelRatio / gWindowRatio).round();
+					Vec mouseRel = mousePos.minus(gMousePos);
+
+					gMousePos = mousePos;
+
+					Widget *hovered = NULL;
+					// onMouseMove
+					{
+						EventMouseMove e;
+						e.pos = mousePos;
+						e.mouseRel = mouseRel;
+						gScene->onMouseMove(e);
+						hovered = e.target;
+					}
+
+					if (gDraggedWidget) {
+						// onDragMove
+						EventDragMove e;
+						e.mouseRel = mouseRel;
+						gDraggedWidget->onDragMove(e);
+
+						if (hovered != gDragHoveredWidget) {
+							if (gDragHoveredWidget) {
+								EventDragEnter e;
+								e.origin = gDraggedWidget;
+								gDragHoveredWidget->onDragLeave(e);
+							}
+							if (hovered) {
+								EventDragEnter e;
+								e.origin = gDraggedWidget;
+								hovered->onDragEnter(e);
+							}
+							gDragHoveredWidget = hovered;
+						}
+					}
+					else {
+						if (hovered != gHoveredWidget) {
+							if (gHoveredWidget) {
+								// onMouseLeave
+								EventMouseLeave e;
+								gHoveredWidget->onMouseLeave(e);
+							}
+							if (hovered) {
+								// onMouseEnter
+								EventMouseEnter e;
+								hovered->onMouseEnter(e);
+							}
+							gHoveredWidget = hovered;
+						}
+					}
+					if (event.motion.state & SDL_BUTTON_MMASK) {
+						// TODO
+						// Define a new global called gScrollWidget, which remembers the widget where middle-click was first pressed
+						EventScroll e;
+						e.pos = mousePos;
+						e.scrollRel = mouseRel;
+						gScene->onScroll(e);
+					}
+				}
+				break;
+				case SDL_MOUSEWHEEL: {
+					Vec scrollRel = Vec(event.wheel.x, event.wheel.y);
+#if ARCH_LIN || ARCH_WIN
+					if (windowIsShiftPressed())
+						scrollRel = Vec(scrollRel.y, scrollRel.x);
+#endif
+					// onScroll
+					EventScroll e;
+					e.pos = gMousePos;
+					e.scrollRel = scrollRel.mult(50.0);
+					gScene->onScroll(e);
+				}
+				break;
+				case SDL_TEXTINPUT: {
+					//TODO
+				}
+				break;
+				case SDL_KEYDOWN: {
+					if (gFocusedWidget) {
+						// onKey
+						EventKey e;
+						e.key = event.key.keysym.sym;
+						gFocusedWidget->onKey(e);
+						if (e.consumed)
+							return;
+					}
+					// onHoverKey
+					EventHoverKey e;
+					e.pos = gMousePos;
+					e.key = event.key.keysym.sym;
+					gScene->onHoverKey(e);
+				}
+				break;
+				//TODO: cursor leave
+			}
+		}
+
+		// Set window title
+		std::string windowTitle = gApplicationName + " v" + gApplicationVersion;
+		if (!gRackWidget->lastPath.empty()) {
+			windowTitle += " - ";
+			windowTitle += extractFilename(gRackWidget->lastPath);
+		}
+		if (windowTitle != lastWindowTitle) {
+			SDL_SetWindowTitle(gWindow, windowTitle.c_str());
+			lastWindowTitle = windowTitle;
+		}
+
+#if 0
+		//TODO
+		// Get desired scaling
+		float pixelRatio;
+		glfwGetWindowContentScale(gWindow, &pixelRatio, NULL);
+		pixelRatio = roundf(pixelRatio);
+		if (pixelRatio != gPixelRatio) {
+			EventZoom eZoom;
+			gScene->onZoom(eZoom);
+			gPixelRatio = pixelRatio;
+		}
+#endif
+
+		// Get framebuffer/window ratio
+		int width, height;
+		SDL_GL_GetDrawableSize(gWindow, &width, &height);
+		int windowWidth, windowHeight;
+		SDL_GetWindowSize(gWindow, &windowWidth, &windowHeight);
+		gWindowRatio = (float)width / windowWidth;
+
+		gScene->box.size = Vec(width, height).div(gPixelRatio / gWindowRatio);
+
+		// Step scene
+		gScene->step();
+
+		// Render
+		bool visible = !(SDL_GetWindowFlags(gWindow) & SDL_WINDOW_HIDDEN); //TODO: correct?
+		if (visible) {
+			renderGui();
+		}
+
+		// Limit framerate manually if vsync isn't working
+		double endTime = SDL_GetTicks() / 1000.;
+		double frameTime = endTime - startTime;
+		double minTime = 1.0 / 90.0;
+		if (frameTime < minTime) {
+			std::this_thread::sleep_for(std::chrono::duration<double>(minTime - frameTime));
+		}
+		endTime = SDL_GetTicks() / 1000.;
+		// info("%lf fps", 1.0 / (endTime - startTime));
+	}
+}
+
+void windowClose() {
+	SDL_Event event;
+	event.type = SDL_QUIT;
+	SDL_PushEvent(&event);
+}
+
+void windowCursorLock() {
+	//TODO
+}
+
+void windowCursorUnlock() {
+	//TODO
+}
+
+bool windowIsModPressed() {
+#ifdef ARCH_MAC
+	return SDL_GetModState() & KMOD_CTRL;
+#else
+	return SDL_GetModState() & KMOD_GUI;
+#endif
+}
+
+bool windowIsShiftPressed() {
+	return SDL_GetModState() & KMOD_SHIFT;
+}
+
+Vec windowGetWindowSize() {
+	int width, height;
+	SDL_GetWindowSize(gWindow, &width, &height);
+	return Vec(width, height);
+}
+
+void windowSetWindowSize(Vec size) {
+	int width = size.x;
+	int height = size.y;
+	SDL_SetWindowSize(gWindow, width, height);
+}
+
+Vec windowGetWindowPos() {
+	int x, y;
+	SDL_GetWindowPosition(gWindow, &x, &y);
+	return Vec(x, y);
+}
+
+void windowSetWindowPos(Vec pos) {
+	int x = pos.x;
+	int y = pos.y;
+	SDL_SetWindowPosition(gWindow, x, y);
+}
+
+bool windowIsMaximized() {
+	return SDL_GetWindowFlags(gWindow) & SDL_WINDOW_MAXIMIZED;
+}
+
+#else
 
 void windowSizeCallback(GLFWwindow* window, int width, int height) {
 }
@@ -288,24 +724,6 @@ void errorCallback(int error, const char *description) {
 	warn("GLFW error %d: %s", error, description);
 }
 
-void renderGui() {
-	int width, height;
-	glfwGetFramebufferSize(gWindow, &width, &height);
-
-	// Update and render
-	nvgBeginFrame(gVg, width, height, gPixelRatio);
-
-	nvgReset(gVg);
-	nvgScale(gVg, gPixelRatio, gPixelRatio);
-	gScene->draw(gVg);
-
-	glViewport(0, 0, width, height);
-	glClearColor(0.0, 0.0, 0.0, 1.0);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-	nvgEndFrame(gVg);
-	glfwSwapBuffers(gWindow);
-}
-
 void windowInit() {
 	int err;
 
@@ -543,6 +961,8 @@ void windowSetWindowPos(Vec pos) {
 bool windowIsMaximized() {
 	return glfwGetWindowAttrib(gWindow, GLFW_MAXIMIZED);
 }
+
+#endif
 
 
 

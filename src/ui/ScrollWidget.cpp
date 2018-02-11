@@ -68,16 +68,33 @@ void ScrollWidget::onMouseMove(EventMouseMove &e) {
 		else if (windowIsModPressed())
 			arrowSpeed /= 4.0;
 
+#ifdef USE_SDL2
+		const Uint8 *keyboard = SDL_GetKeyboardState(NULL);
+		if (keyboard[SDL_GetScancodeFromKey(SDLK_LEFT)]) {
+#else
 		if (glfwGetKey(gWindow, GLFW_KEY_LEFT) == GLFW_PRESS) {
+#endif
 			offset.x -= arrowSpeed;
 		}
+#ifdef USE_SDL2
+		if (keyboard[SDL_GetScancodeFromKey(SDLK_RIGHT)]) {
+#else
 		if (glfwGetKey(gWindow, GLFW_KEY_RIGHT) == GLFW_PRESS) {
+#endif
 			offset.x += arrowSpeed;
 		}
+#ifdef USE_SDL2
+		if (keyboard[SDL_GetScancodeFromKey(SDLK_UP)]) {
+#else
 		if (glfwGetKey(gWindow, GLFW_KEY_UP) == GLFW_PRESS) {
+#endif
 			offset.y -= arrowSpeed;
 		}
+#ifdef USE_SDL2
+		if (keyboard[SDL_GetScancodeFromKey(SDLK_DOWN)]) {
+#else
 		if (glfwGetKey(gWindow, GLFW_KEY_DOWN) == GLFW_PRESS) {
+#endif
 			offset.y += arrowSpeed;
 		}
 	}

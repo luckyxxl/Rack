@@ -90,28 +90,44 @@ void RackScene::onHoverKey(EventHoverKey &e) {
 
 	if (!e.consumed) {
 		switch (e.key) {
+#ifdef USE_SDL2
+			case SDLK_n: {
+#else
 			case GLFW_KEY_N: {
+#endif
 				if (windowIsModPressed() && !windowIsShiftPressed()) {
 					gRackWidget->reset();
 					e.consumed = true;
 					return;
 				}
 			} break;
+#ifdef USE_SDL2
+			case SDLK_q: {
+#else
 			case GLFW_KEY_Q: {
+#endif
 				if (windowIsModPressed() && !windowIsShiftPressed()) {
 					windowClose();
 					e.consumed = true;
 					return;
 				}
 			} break;
+#ifdef USE_SDL2
+			case SDLK_o: {
+#else
 			case GLFW_KEY_O: {
+#endif
 				if (windowIsModPressed() && !windowIsShiftPressed()) {
 					gRackWidget->openDialog();
 					e.consumed = true;
 					return;
 				}
 			} break;
+#ifdef USE_SDL2
+			case SDLK_s: {
+#else
 			case GLFW_KEY_S: {
+#endif
 				if (windowIsModPressed() && !windowIsShiftPressed()) {
 					gRackWidget->saveDialog();
 					e.consumed = true;

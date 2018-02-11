@@ -1,8 +1,6 @@
 #include "ui.hpp"
 // for gVg
 #include "window.hpp"
-// for key codes
-#include <GLFW/glfw3.h>
 
 
 namespace rack {
@@ -43,7 +41,11 @@ void TextField::onText(EventText &e) {
 
 void TextField::onKey(EventKey &e) {
 	switch (e.key) {
+#ifdef USE_SDL2
+		case SDLK_BACKSPACE:
+#else
 		case GLFW_KEY_BACKSPACE:
+#endif
 			if (begin < end) {
 				text.erase(begin, end - begin);
 				onTextChange();
@@ -57,7 +59,11 @@ void TextField::onKey(EventKey &e) {
 			}
 			end = begin;
 			break;
+#ifdef USE_SDL2
+		case SDLK_DELETE:
+#else
 		case GLFW_KEY_DELETE:
+#endif
 			if (begin < end) {
 				text.erase(begin, end - begin);
 				onTextChange();
@@ -68,7 +74,11 @@ void TextField::onKey(EventKey &e) {
 			}
 			end = begin;
 			break;
+#ifdef USE_SDL2
+		case SDLK_LEFT:
+#else
 		case GLFW_KEY_LEFT:
+#endif
 			if (begin < end) {
 			}
 			else {
@@ -76,7 +86,11 @@ void TextField::onKey(EventKey &e) {
 			}
 			end = begin;
 			break;
+#ifdef USE_SDL2
+		case SDLK_RIGHT:
+#else
 		case GLFW_KEY_RIGHT:
+#endif
 			if (begin < end) {
 				begin = end;
 			}
@@ -85,28 +99,56 @@ void TextField::onKey(EventKey &e) {
 			}
 			end = begin;
 			break;
+#ifdef USE_SDL2
+		case SDLK_HOME:
+#else
 		case GLFW_KEY_HOME:
+#endif
 			end = begin = 0;
 			break;
+#ifdef USE_SDL2
+		case SDLK_END:
+#else
 		case GLFW_KEY_END:
+#endif
 			end = begin = text.size();
 			break;
+#ifdef USE_SDL2
+		case SDLK_v:
+#else
 		case GLFW_KEY_V:
+#endif
 			if (windowIsModPressed()) {
+#ifdef USE_SDL2
+				const char *newText = SDL_GetClipboardText();
+#else
 				const char *newText = glfwGetClipboardString(gWindow);
+#endif
 				if (newText)
 					insertText(newText);
 			}
 			break;
+#ifdef USE_SDL2
+		case SDLK_c:
+#else
 		case GLFW_KEY_C:
+#endif
 			if (windowIsModPressed()) {
 				if (begin < end) {
 					std::string selectedText = text.substr(begin, end - begin);
+#ifdef USE_SDL2
+					SDL_SetClipboardText(selectedText.c_str());
+#else
 					glfwSetClipboardString(gWindow, selectedText.c_str());
+#endif
 				}
 			}
 			break;
+#ifdef USE_SDL2
+		case SDLK_RETURN:
+#else
 		case GLFW_KEY_ENTER:
+#endif
 			if (multiline) {
 				insertText("\n");
 			}

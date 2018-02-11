@@ -1,7 +1,11 @@
 #pragma once
 #include "app.hpp"
 #include <GL/glew.h>
+#ifdef USE_SDL2
+#include <SDL.h>
+#else
 #include <GLFW/glfw3.h>
+#endif
 
 
 #ifdef ARCH_MAC
@@ -14,7 +18,11 @@
 namespace rack {
 
 
+#ifdef USE_SDL2
+extern SDL_Window *gWindow;
+#else
 extern GLFWwindow *gWindow;
+#endif
 extern NVGcontext *gVg;
 extern NVGcontext *gFramebufferVg;
 /** The default font to use for GUI elements */

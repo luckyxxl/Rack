@@ -219,7 +219,12 @@ void ModuleWidget::onMouseMove(EventMouseMove &e) {
 	// Don't delete the ModuleWidget if a TextField is focused
 	if (!gFocusedWidget) {
 		// Instead of checking key-down events, delete the module even if key-repeat hasn't fired yet and the cursor is hovering over the widget.
+#ifdef USE_SDL2
+		const Uint8 *keyboard = SDL_GetKeyboardState(NULL);
+		if (keyboard[SDL_GetScancodeFromKey(SDLK_DELETE)] || keyboard[SDL_GetScancodeFromKey(SDLK_BACKSPACE)]) {
+#else
 		if (glfwGetKey(gWindow, GLFW_KEY_DELETE) == GLFW_PRESS || glfwGetKey(gWindow, GLFW_KEY_BACKSPACE) == GLFW_PRESS) {
+#endif
 			if (!windowIsModPressed() && !windowIsShiftPressed()) {
 				gRackWidget->deleteModule(this);
 				this->finalizeEvents();
@@ -233,21 +238,33 @@ void ModuleWidget::onMouseMove(EventMouseMove &e) {
 
 void ModuleWidget::onHoverKey(EventHoverKey &e) {
 	switch (e.key) {
+#ifdef USE_SDL2
+		case SDLK_i:
+#else
 		case GLFW_KEY_I:
+#endif
 			if (windowIsModPressed() && !windowIsShiftPressed()) {
 				reset();
 				e.consumed = true;
 				return;
 			}
 			break;
+#ifdef USE_SDL2
+		case SDLK_r:
+#else
 		case GLFW_KEY_R:
+#endif
 			if (windowIsModPressed() && !windowIsShiftPressed()) {
 				randomize();
 				e.consumed = true;
 				return;
 			}
 			break;
+#ifdef USE_SDL2
+		case SDLK_d:
+#else
 		case GLFW_KEY_D:
+#endif
 			if (windowIsModPressed() && !windowIsShiftPressed()) {
 				gRackWidget->cloneModule(this);
 				e.consumed = true;

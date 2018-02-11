@@ -31,6 +31,13 @@ int main(int argc, char* argv[]) {
 		info("Local directory: %s", localDir.c_str());
 	}
 
+#ifdef USE_SDL2
+	if(SDL_Init(SDL_INIT_VIDEO)) {
+		osdialog_message(OSDIALOG_ERROR, OSDIALOG_OK, "Could not initialize SDL2.");
+		exit(1);
+	}
+#endif
+
 	pluginInit();
 	engineInit();
 	windowInit();
@@ -59,6 +66,10 @@ int main(int argc, char* argv[]) {
 	windowDestroy();
 	engineDestroy();
 	pluginDestroy();
+
+#ifdef USE_SDL2
+	SDL_Quit();
+#endif
 
 #ifdef RELEASE
 	fclose(gLogFile);
