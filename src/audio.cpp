@@ -9,7 +9,11 @@ namespace rack {
 
 
 AudioIO::AudioIO() {
+#ifdef USE_SDL2_AUDIO
+	setDriver(0);
+#else
 	setDriver(RtAudio::UNSPECIFIED);
+#endif
 }
 
 AudioIO::~AudioIO() {
@@ -17,17 +21,29 @@ AudioIO::~AudioIO() {
 }
 
 std::vector<int> AudioIO::listDrivers() {
+	std::vector<int> drivers;
+#ifdef USE_SDL2_AUDIO
+	drivers.push_back(0);
+#else
 	std::vector<RtAudio::Api> apis;
 	RtAudio::getCompiledApi(apis);
-	std::vector<int> drivers;
 	for (RtAudio::Api api : apis)
 		drivers.push_back((int) api);
+#endif
 	// Add Bridge fake driver
 	// drivers.push_back(DRIVER_BRIDGE);
 	return drivers;
 }
 
 std::string AudioIO::getDriverName(int driver) {
+#ifdef USE_SDL2_AUDIO
+	if (driver >= 0) {
+		const char *driver = SDL_GetCurrentAudioDriver();
+		return driver ? driver : "Unknown";
+	}
+	else if (driver == DRIVER_BRIDGE) return "VCV Bridge";
+	else return "Unknown";
+#else
 	switch (driver) {
 		case RtAudio::UNSPECIFIED: return "Unspecified";
 		case RtAudio::LINUX_ALSA: return "ALSA";
@@ -42,21 +58,26 @@ std::string AudioIO::getDriverName(int driver) {
 		case DRIVER_BRIDGE: return "VCV Bridge";
 		default: return "Unknown";
 	}
+#endif
 }
 
 void AudioIO::setDriver(int driver) {
 	// Close driver
 	closeStream();
+#ifndef USE_SDL2_AUDIO
 	if (rtAudio) {
 		delete rtAudio;
 		rtAudio = NULL;
 	}
+#endif
 	this->driver = 0;
 
 	// Open driver
 	if (driver >= 0) {
+#ifndef USE_SDL2_AUDIO
 		rtAudio = new RtAudio((RtAudio::Api) driver);
 		this->driver = (int) rtAudio->getCurrentApi();
+#endif
 	}
 	else if (driver == DRIVER_BRIDGE) {
 		// TODO Connect to Bridge
@@ -65,9 +86,15 @@ void AudioIO::setDriver(int driver) {
 }
 
 int AudioIO::getDeviceCount() {
+#ifdef USE_SDL2_AUDIO
+	if (driver >= 0) {
+		return SDL_GetNumAudioDevices(0);
+	}
+#else
 	if (rtAudio) {
 		return rtAudio->getDeviceCount();
 	}
+#endif
 	if (driver == DRIVER_BRIDGE) {
 		return 16;
 	}
@@ -75,6 +102,11 @@ int AudioIO::getDeviceCount() {
 }
 
 std::string AudioIO::getDeviceName(int device) {
+#ifdef USE_SDL2_AUDIO
+	if (driver >= 0 && device >= 0) {
+		return SDL_GetAudioDeviceName(device, 0);
+	}
+#else
 	if (rtAudio) {
 		try {
 			RtAudio::DeviceInfo deviceInfo = rtAudio->getDeviceInfo(device);
@@ -84,6 +116,7 @@ std::string AudioIO::getDeviceName(int device) {
 			warn("Failed to query RtAudio device: %s", e.what());
 		}
 	}
+#endif
 	if (driver == DRIVER_BRIDGE) {
 		return stringf("%d", device + 1);
 	}
@@ -91,6 +124,10 @@ std::string AudioIO::getDeviceName(int device) {
 }
 
 std::string AudioIO::getDeviceDetail(int device) {
+#ifdef USE_SDL2_AUDIO
+	if (driver >= 0)
+		return getDeviceName(device);
+#else
 	if (rtAudio) {
 		try {
 			RtAudio::DeviceInfo deviceInfo = rtAudio->getDeviceInfo(device);
@@ -100,18 +137,27 @@ std::string AudioIO::getDeviceDetail(int device) {
 			warn("Failed to query RtAudio device: %s", e.what());
 		}
 	}
+#endif
 	if (driver == DRIVER_BRIDGE) {
 		return stringf("Channel %d", device + 1);
 	}
 	return "";
 }
 
+#ifdef USE_SDL2_AUDIO
+static void sdlCallback(void *userdata, Uint8 *stream, int len) {
+	AudioIO *audioIO = (AudioIO*) userdata;
+	assert(audioIO);
+	audioIO->processStream(NULL, (float *) stream, len / sizeof(float) / audioIO->numOutputs);
+}
+#else
 static int rtCallback(void *outputBuffer, void *inputBuffer, unsigned int nFrames, double streamTime, RtAudioStreamStatus status, void *userData) {
 	AudioIO *audioIO = (AudioIO*) userData;
 	assert(audioIO);
 	audioIO->processStream((const float *) inputBuffer, (float *) outputBuffer, nFrames);
 	return 0;
 }
+#endif
 
 void AudioIO::openStream() {
 	// Close device but remember the current device number
@@ -121,6 +167,31 @@ void AudioIO::openStream() {
 	if (device < 0)
 		return;
 
+#ifdef USE_SDL2_AUDIO
+	SDL_AudioSpec desired, obtained;
+	desired.freq = sampleRate;
+	desired.format = AUDIO_F32SYS;
+	desired.channels = 6;
+	desired.samples = blockSize;
+	desired.callback = sdlCallback;
+	desired.userdata = this;
+
+	sdlDevice = SDL_OpenAudioDevice(getDeviceName(device).c_str(), 0, &desired, &obtained, SDL_AUDIO_ALLOW_FREQUENCY_CHANGE|SDL_AUDIO_ALLOW_CHANNELS_CHANGE);
+	if(sdlDevice == 0) {
+		warn("Could not open SDL audio device: %s", SDL_GetError());
+		return;
+	}
+
+	sampleRate = obtained.freq;
+	blockSize = obtained.samples;
+	numInputs = 0;
+	numOutputs = obtained.channels;
+
+	SDL_PauseAudioDevice(sdlDevice, 0);
+
+	this->device = device;
+	onOpenStream();
+#else
 	if (rtAudio) {
 		// Open new device
 		RtAudio::DeviceInfo deviceInfo;
@@ -184,9 +255,15 @@ void AudioIO::openStream() {
 		this->device = device;
 		onOpenStream();
 	}
+#endif
 }
 
 void AudioIO::closeStream() {
+#ifdef USE_SDL2_AUDIO
+	if (sdlDevice) {
+		SDL_CloseAudioDevice(sdlDevice);
+	}
+#else
 	if (rtAudio) {
 		if (rtAudio->isStreamRunning()) {
 			debug("Stopping RtAudio stream %d", device);
@@ -207,6 +284,7 @@ void AudioIO::closeStream() {
 			}
 		}
 	}
+#endif
 
 	// Reset rtAudio settings
 	device = -1;
@@ -216,14 +294,24 @@ void AudioIO::closeStream() {
 }
 
 bool AudioIO::isActive() {
+#ifdef USE_SDL2_AUDIO
+	if (sdlDevice)
+		return SDL_GetAudioDeviceStatus(sdlDevice) == SDL_AUDIO_PLAYING;
+#else
 	if (rtAudio)
 		return rtAudio->isStreamRunning();
+#endif
 	// TODO Bridge
 	return false;
 }
 
 
 std::vector<int> AudioIO::listSampleRates() {
+#ifdef USE_SDL2_AUDIO
+	if (driver >= 0) {
+		return {44100, 48000, 88200, 96000, 176400, 192000};
+	}
+#else
 	if (rtAudio) {
 		try {
 			RtAudio::DeviceInfo deviceInfo = rtAudio->getDeviceInfo(device);
@@ -234,6 +322,7 @@ std::vector<int> AudioIO::listSampleRates() {
 			warn("Failed to query RtAudio device: %s", e.what());
 		}
 	}
+#endif
 	if (driver == DRIVER_BRIDGE) {
 		return {44100, 48000, 88200, 96000, 176400, 192000};
 	}

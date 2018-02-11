@@ -10,6 +10,7 @@
 
 #include <cmath>
 #include <string>
+#include <vector>
 #include <condition_variable>
 #include <mutex>
 

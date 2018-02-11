@@ -32,7 +32,11 @@ int main(int argc, char* argv[]) {
 	}
 
 #ifdef USE_SDL2
-	if(SDL_Init(SDL_INIT_VIDEO)) {
+	Uint32 sdl_init_flags = SDL_INIT_VIDEO;
+#ifdef USE_SDL2_AUDIO
+	sdl_init_flags |= SDL_INIT_AUDIO;
+#endif
+	if(SDL_Init(sdl_init_flags)) {
 		osdialog_message(OSDIALOG_ERROR, OSDIALOG_OK, "Could not initialize SDL2.");
 		exit(1);
 	}

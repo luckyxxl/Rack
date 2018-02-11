@@ -2,10 +2,14 @@
 
 #include <jansson.h>
 
+#ifdef USE_SDL2_AUDIO
+#include <SDL.h>
+#else
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wsuggest-override"
 #include <RtAudio.h>
 #pragma GCC diagnostic pop
+#endif
 
 
 namespace rack {
@@ -22,7 +26,11 @@ struct AudioIO {
 	int blockSize = 256;
 	int numOutputs = 0;
 	int numInputs = 0;
+#ifdef USE_SDL2_AUDIO
+	SDL_AudioDeviceID sdlDevice = 0;
+#else
 	RtAudio *rtAudio = NULL;
+#endif
 
 	AudioIO();
 	virtual ~AudioIO();

@@ -36,6 +36,10 @@ ifdef USE_SDL2
 	FLAGS += -DUSE_SDL2
 endif
 
+ifdef USE_SDL2_AUDIO
+	FLAGS += -DUSE_SDL2_AUDIO
+endif
+
 CFLAGS += $(FLAGS)
 CXXFLAGS += $(FLAGS)
 
